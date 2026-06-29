@@ -26,7 +26,12 @@ const BUCKET = 'docs-rh';
 // ------------------------------------------------------------
 // Middlewares
 // ------------------------------------------------------------
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+app.options('*', cors());
 app.use(express.json());
 
 // Health check (evita cold start longo no Render)
