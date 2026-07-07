@@ -118,11 +118,21 @@ app.get('/funcionarios/:id/documentos', async (req, res) => {
   res.json(data);
 });
 
+// Sanitiza nome de arquivo: remove acentos, espaços e caracteres especiais
+function sanitizarNome(nome) {
+  return nome
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-zA-Z0-9._-]/g, '_')                // substitui especiais por _
+    .replace(/_+/g, '_')                              // colapsa underscores duplos
+    .replace(/^_|_$/g, '');                           // remove _ no início/fim
+}
+
 app.post('/funcionarios/:id/documentos', upload.single('arquivo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Arquivo não enviado' });
   const { categoria, nome_exibicao, enviado_por } = req.body;
-  const funcId = req.params.id;
-  const path = `${funcId}/${categoria || 'outros'}/${Date.now()}_${req.file.originalname}`;
+  const funcId       = req.params.id;
+  const nomeSeguro   = sanitizarNome(req.file.originalname);
+  const path         = `${funcId}/${categoria || 'outros'}/${Date.now()}_${nomeSeguro}`;
   const sb = getSupabase();
   const { error: upErr } = await sb.storage.from(BUCKET).upload(path, req.file.buffer, { contentType: req.file.mimetype });
   if (upErr) return res.status(500).json({ error: 'Erro no upload: ' + upErr.message });
