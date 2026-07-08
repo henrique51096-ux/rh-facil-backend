@@ -64,11 +64,14 @@ app.post('/funcionarios', upload.single('foto'), async (req, res) => {
     if (upErr) return res.status(500).json({ error: 'Erro ao enviar foto: ' + upErr.message });
     foto_path = path;
   }
+  const toDate = v => (v && v.trim() !== '') ? v.trim() : null;
   const { data, error } = await sb.from('funcionarios')
-    .insert({ nome, cargo, setor, cpf, data_admissao, status: status || 'ativo', observacoes, foto_path,
-              data_inicio_status: data_inicio_status || null,
-              data_fim_status:    data_fim_status    || null,
-              data_demissao:      data_demissao      || null })
+    .insert({ nome, cargo, setor, cpf,
+              data_admissao:      toDate(data_admissao),
+              status: status || 'ativo', observacoes, foto_path,
+              data_inicio_status: toDate(data_inicio_status),
+              data_fim_status:    toDate(data_fim_status),
+              data_demissao:      toDate(data_demissao) })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json(data);
@@ -77,10 +80,14 @@ app.post('/funcionarios', upload.single('foto'), async (req, res) => {
 app.put('/funcionarios/:id', upload.single('foto'), async (req, res) => {
   const { nome, cargo, setor, cpf, data_admissao, status, observacoes,
           data_inicio_status, data_fim_status, data_demissao } = req.body;
-  const updates = { nome, cargo, setor, cpf, data_admissao, status, observacoes,
-                    data_inicio_status: data_inicio_status || null,
-                    data_fim_status:    data_fim_status    || null,
-                    data_demissao:      data_demissao      || null };
+  // Converte string vazia em null para campos date
+  const toDate = v => (v && v.trim() !== '') ? v.trim() : null;
+  const updates = { nome, cargo, setor, cpf,
+                    data_admissao:      toDate(data_admissao),
+                    status, observacoes,
+                    data_inicio_status: toDate(data_inicio_status),
+                    data_fim_status:    toDate(data_fim_status),
+                    data_demissao:      toDate(data_demissao) };
   const sb = getSupabase();
   if (req.file) {
     const ext = req.file.originalname.split('.').pop();
