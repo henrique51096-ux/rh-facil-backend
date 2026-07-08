@@ -1,8 +1,3 @@
-// ============================================================
-// RH Fácil — server.js
-// Stack: Node.js + Express + Supabase + Multer
-// ============================================================
-
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
@@ -11,12 +6,10 @@ const multer  = require('multer');
 const app    = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-// CORS liberado para uso interno (file://)
 app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization'] }));
 app.options('*', cors());
 app.use(express.json());
 
-// Supabase inicializado lazy (só quando necessário)
 let supabase = null;
 function getSupabase() {
   if (!supabase) {
@@ -28,12 +21,17 @@ function getSupabase() {
 
 const BUCKET = 'docs-rh';
 
-// Health check — responde imediatamente
+function sanitizarNome(nome) {
+  return nome
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
-// ============================================================
-// FUNCIONÁRIOS
-// ============================================================
+// ── Funcionários ──────────────────────────────────────────
 
 app.get('/funcionarios', async (req, res) => {
   const { status, busca } = req.query;
@@ -54,7 +52,8 @@ app.get('/funcionarios/:id', async (req, res) => {
 });
 
 app.post('/funcionarios', upload.single('foto'), async (req, res) => {
-  const { nome, cargo, setor, cpf, data_admissao, status, observacoes } = req.body;
+  const { nome, cargo, setor, cpf, data_admissao, status, observacoes,
+          data_inicio_status, data_fim_status, data_demissao } = req.body;
   if (!nome || !cargo || !setor) return res.status(400).json({ error: 'nome, cargo e setor são obrigatórios' });
   const sb = getSupabase();
   let foto_path = null;
@@ -66,15 +65,22 @@ app.post('/funcionarios', upload.single('foto'), async (req, res) => {
     foto_path = path;
   }
   const { data, error } = await sb.from('funcionarios')
-    .insert({ nome, cargo, setor, cpf, data_admissao, status: status || 'ativo', observacoes, foto_path })
+    .insert({ nome, cargo, setor, cpf, data_admissao, status: status || 'ativo', observacoes, foto_path,
+              data_inicio_status: data_inicio_status || null,
+              data_fim_status:    data_fim_status    || null,
+              data_demissao:      data_demissao      || null })
     .select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json(data);
 });
 
 app.put('/funcionarios/:id', upload.single('foto'), async (req, res) => {
-  const { nome, cargo, setor, cpf, data_admissao, status, observacoes } = req.body;
-  const updates = { nome, cargo, setor, cpf, data_admissao, status, observacoes };
+  const { nome, cargo, setor, cpf, data_admissao, status, observacoes,
+          data_inicio_status, data_fim_status, data_demissao } = req.body;
+  const updates = { nome, cargo, setor, cpf, data_admissao, status, observacoes,
+                    data_inicio_status: data_inicio_status || null,
+                    data_fim_status:    data_fim_status    || null,
+                    data_demissao:      data_demissao      || null };
   const sb = getSupabase();
   if (req.file) {
     const ext = req.file.originalname.split('.').pop();
@@ -105,9 +111,7 @@ app.get('/funcionarios/:id/foto-url', async (req, res) => {
   res.json({ url: data.signedUrl });
 });
 
-// ============================================================
-// DOCUMENTOS
-// ============================================================
+// ── Documentos ────────────────────────────────────────────
 
 app.get('/funcionarios/:id/documentos', async (req, res) => {
   const { categoria } = req.query;
@@ -118,21 +122,12 @@ app.get('/funcionarios/:id/documentos', async (req, res) => {
   res.json(data);
 });
 
-// Sanitiza nome de arquivo: remove acentos, espaços e caracteres especiais
-function sanitizarNome(nome) {
-  return nome
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-    .replace(/[^a-zA-Z0-9._-]/g, '_')                // substitui especiais por _
-    .replace(/_+/g, '_')                              // colapsa underscores duplos
-    .replace(/^_|_$/g, '');                           // remove _ no início/fim
-}
-
 app.post('/funcionarios/:id/documentos', upload.single('arquivo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Arquivo não enviado' });
   const { categoria, nome_exibicao, enviado_por } = req.body;
-  const funcId       = req.params.id;
-  const nomeSeguro   = sanitizarNome(req.file.originalname);
-  const path         = `${funcId}/${categoria || 'outros'}/${Date.now()}_${nomeSeguro}`;
+  const funcId     = req.params.id;
+  const nomeSeguro = sanitizarNome(req.file.originalname);
+  const path       = `${funcId}/${categoria || 'outros'}/${Date.now()}_${nomeSeguro}`;
   const sb = getSupabase();
   const { error: upErr } = await sb.storage.from(BUCKET).upload(path, req.file.buffer, { contentType: req.file.mimetype });
   if (upErr) return res.status(500).json({ error: 'Erro no upload: ' + upErr.message });
@@ -164,10 +159,5 @@ app.delete('/documentos/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ============================================================
-// START — porta definida antes de qualquer I/O
-// ============================================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`RH Fácil backend rodando na porta ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`RH Fácil backend rodando na porta ${PORT}`));
